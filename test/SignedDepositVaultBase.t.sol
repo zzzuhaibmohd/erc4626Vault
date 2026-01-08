@@ -60,33 +60,10 @@ abstract contract SignedDepositVaultBaseTest is Test {
     ERC20Mock public asset;
 
     uint256 constant MIN_ASSET_DEPOSIT = 1 ether;
-    // Setup users
-    uint256 userOnePk = 0xA11CE;
-    uint256 userTwoPk = 0xB0B;
-    uint256 userThreePk = 0xC0DE;
-
-    address userOne = vm.addr(userOnePk);
-    address userTwo = vm.addr(uint256(userTwoPk));
-    address userThree = vm.addr(uint256(userThreePk));
 
     /// @notice Override this in version-specific test contracts to deploy the specific version
     function setUp() public virtual {
-        asset = new ERC20Mock("ezUSD Token", "ezUSD");
-
-        // Mint assets to users and approve the vault to spend them
-        asset.mint(userOne, 1000 ether);
-        asset.mint(userTwo, 1000 ether);
-        asset.mint(userThree, 1000 ether);
-        asset.mint(address(this), 10000 ether);
-
-        vm.prank(userOne);
-        asset.approve(address(vault), 1000 ether);
-        vm.prank(userTwo);
-        asset.approve(address(vault), 1000 ether);
-        vm.prank(userThree);
-        asset.approve(address(vault), 1000 ether);
-        vm.prank(address(this));
-        asset.approve(address(vault), 10000 ether);
+        // @note: This is intentionally empty - child contracts must override
     }
 
     // ============ Test Functions ============
@@ -218,23 +195,26 @@ abstract contract SignedDepositVaultBaseTest is Test {
         assertGt(vault.balanceOf(_minter), 0);
     }
 
-    function testFuzz_MintWithSig_ReplayAttackFails(uint256 _shares, address _relayer) public {
+    function testFuzz_MintWithSig_ReplayAttackFails(uint64 _pk, uint256 _shares, address _relayer) public {
+        _pk = uint64(bound(_pk, 1, type(uint64).max));
+        address _minter = vm.addr(_pk);
         vm.assume(_shares > 0);
         _shares = bound(_shares, 1 wei, 1000 ether);
-        vm.assume(
-            _relayer != address(0) && _relayer != address(this) && _relayer != userOne && _relayer != userTwo
-                && _relayer != userThree
-        );
+        vm.assume(_relayer != address(0) && _relayer != address(this));
+        asset.mint(_minter, 1000 ether);
+        vm.prank(_minter);
+        asset.approve(address(vault), 1000 ether);
+
         uint256 nonce = 0;
         uint256 deadline = block.timestamp + 1 hours;
 
-        // First deposit should succeed
-        internal_mintWithSig(userOne, _shares, nonce, deadline, userOnePk, _relayer);
+        // First mint should succeed
+        internal_mintWithSig(_minter, _shares, nonce, deadline, _pk, _relayer);
 
         // Second mint with same nonce should fail
         ISignedDepositVault.MintIntent memory intent =
-            ISignedDepositVault.MintIntent({minter: userOne, shares: _shares, nonce: nonce, deadline: deadline});
-        bytes memory sig = signMint(intent, userOnePk);
+            ISignedDepositVault.MintIntent({minter: _minter, shares: _shares, nonce: nonce, deadline: deadline});
+        bytes memory sig = signMint(intent, _pk);
 
         vm.expectRevert(ISignedDepositVault.InvalidNonce.selector);
         vm.startPrank(_relayer);
@@ -242,23 +222,26 @@ abstract contract SignedDepositVaultBaseTest is Test {
         vm.stopPrank();
     }
 
-    function testFuzz_MintWithSig_DeadlineExpiredFails(uint256 _shares, address _relayer) public {
+    function testFuzz_MintWithSig_DeadlineExpiredFails(uint64 _pk, uint256 _shares, address _relayer) public {
+        _pk = uint64(bound(_pk, 1, type(uint64).max));
+        address _minter = vm.addr(_pk);
         vm.assume(_shares > 0);
         _shares = bound(_shares, 1 wei, 1000 ether);
-        vm.assume(
-            _relayer != address(0) && _relayer != address(this) && _relayer != userOne && _relayer != userTwo
-                && _relayer != userThree
-        );
+        vm.assume(_relayer != address(0) && _relayer != address(this));
+        asset.mint(_minter, 1000 ether);
+        vm.prank(_minter);
+        asset.approve(address(vault), 1000 ether);
+
         uint256 nonce = 0;
         uint256 deadline = block.timestamp + 1 hours;
 
         // Warp time past deadline
         vm.warp(deadline + 2 hours);
 
-        // Mint with same nonce should fail
+        // Mint with expired deadline should fail
         ISignedDepositVault.MintIntent memory intent =
-            ISignedDepositVault.MintIntent({minter: userOne, shares: _shares, nonce: nonce, deadline: deadline});
-        bytes memory sig = signMint(intent, userOnePk);
+            ISignedDepositVault.MintIntent({minter: _minter, shares: _shares, nonce: nonce, deadline: deadline});
+        bytes memory sig = signMint(intent, _pk);
 
         vm.expectRevert(ISignedDepositVault.DeadlineExpired.selector);
         vm.startPrank(_relayer);
@@ -266,19 +249,35 @@ abstract contract SignedDepositVaultBaseTest is Test {
         vm.stopPrank();
     }
 
-    function testFuzz_MintWithSig_InvalidSignatureFails(uint256 _shares, address _relayer) public {
+    function testFuzz_MintWithSig_InvalidSignatureFails(
+        uint64 _pk,
+        uint256 _shares,
+        address _relayer,
+        uint64 _wrongPk
+    ) public {
+        _pk = uint64(bound(_pk, 1, type(uint64).max));
+        _wrongPk = uint64(bound(_wrongPk, 1, type(uint64).max));
+        vm.assume(_wrongPk != _pk);
+        address _minter = vm.addr(_pk);
         vm.assume(_shares > 0);
         _shares = bound(_shares, 1 wei, 1000 ether);
-        uint256 nonce = 0;
+        vm.assume(_relayer != address(0) && _relayer != address(this));
+        asset.mint(_minter, 1000 ether);
+        vm.prank(_minter);
+        asset.approve(address(vault), 1000 ether);
+        internal_mintWithSig(_minter, _shares, 0, block.timestamp + 1 hours, _pk, _relayer);
+
+        // Use a different nonce (1) since nonce 0 was already used, so we can test invalid signature
+        uint256 nonce = 1;
         uint256 deadline = block.timestamp + 1 hours;
 
-        // Use wrong signer (userTwoPk instead of userOnePk)
+        // Use wrong signer (_wrongPk instead of _pk)
         ISignedDepositVault.MintIntent memory intent =
-            ISignedDepositVault.MintIntent({minter: userOne, shares: _shares, nonce: nonce, deadline: deadline});
-        bytes memory invalidSig = signMint(intent, userTwoPk);
+            ISignedDepositVault.MintIntent({minter: _minter, shares: _shares, nonce: nonce, deadline: deadline});
+        bytes memory invalidSig = signMint(intent, _wrongPk);
 
         vm.expectRevert(ISignedDepositVault.InvalidSignature.selector);
-        vm.prank(_relayer);
+        vm.startPrank(_relayer);
         vault.mintWithSig(intent, invalidSig);
         vm.stopPrank();
     }

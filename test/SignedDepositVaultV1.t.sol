@@ -25,21 +25,6 @@ contract SignedDepositVaultV1Test is SignedDepositVaultBaseTest {
 
         // Cast proxy to vault interface
         vault = ISignedDepositVault(payable(address(proxy)));
-
-        // Set up users and approvals (from parent, but skip asset creation)
-        asset.mint(userOne, 1000 ether);
-        asset.mint(userTwo, 1000 ether);
-        asset.mint(userThree, 1000 ether);
-        asset.mint(address(this), 10000 ether);
-
-        vm.prank(userOne);
-        asset.approve(address(vault), 1000 ether);
-        vm.prank(userTwo);
-        asset.approve(address(vault), 1000 ether);
-        vm.prank(userThree);
-        asset.approve(address(vault), 1000 ether);
-        vm.prank(address(this));
-        asset.approve(address(vault), 10000 ether);
     }
 
     // ### Yield Tests ###
@@ -55,8 +40,7 @@ contract SignedDepositVaultV1Test is SignedDepositVaultBaseTest {
     {
         _pk = uint64(bound(_pk, 1, type(uint64).max));
         vm.assume(
-            _relayer != address(0) && _relayer != address(this) && _relayer != userOne && _relayer != userTwo
-                && _relayer != userThree
+            _relayer != address(0) && _relayer != address(this)
         );
         address _depositor = vm.addr(_pk);
         _assets = bound(_assets, 1 ether, type(uint128).max);
@@ -94,8 +78,7 @@ contract SignedDepositVaultV1Test is SignedDepositVaultBaseTest {
     {
         _pk = uint64(bound(_pk, 1, type(uint64).max));
         vm.assume(
-            _relayer != address(0) && _relayer != address(this) && _relayer != userOne && _relayer != userTwo
-                && _relayer != userThree
+            _relayer != address(0) && _relayer != address(this)
         );
         address _depositor = vm.addr(_pk);
         _assets = bound(_assets, 1 ether, type(uint128).max);
