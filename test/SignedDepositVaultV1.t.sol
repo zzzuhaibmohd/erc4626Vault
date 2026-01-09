@@ -1,30 +1,23 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {SignedDepositVaultBaseTest, ERC20Mock, ISignedDepositVault} from "./SignedDepositVaultBase.t.sol";
-import {SignedDepositVaultV1} from "../src/SignedDepositVaultV1.sol";
-import {ERC1967Proxy} from "openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {SignedDepositVaultBaseTest, ISignedDepositVault} from "./SignedDepositVaultBase.t.sol";
+import {DeploySignedDepositVaultHelper} from "../script/DeploySignedDepositVaultHelper.sol";
 import {console2} from "forge-std/console2.sol";
 
 /// @notice Test contract for SignedDepositVaultV1
 /// @dev Inherits all test logic from SignedDepositVaultBaseTest and only overrides setUp() to deploy V1
 contract SignedDepositVaultV1Test is SignedDepositVaultBaseTest {
+    using DeploySignedDepositVaultHelper for *;
+
     function setUp() public override {
-        // Create asset first
-        asset = new ERC20Mock("ezUSD Token", "ezUSD");
+        // Deploy using the shared helper (same as deployment script)
+        DeploySignedDepositVaultHelper.DeploymentResult memory result =
+            DeploySignedDepositVaultHelper.deploy("ezUSD Token", "ezUSD", "ezUSD Vault", "ezUSDV");
 
-        // Deploy V1 implementation
-        SignedDepositVaultV1 implementation = new SignedDepositVaultV1();
-
-        // Encode initialize function call
-        bytes memory initData =
-            abi.encodeWithSelector(SignedDepositVaultV1.initialize.selector, "ezUSD Vault", "ezUSDV", asset);
-
-        // Deploy proxy with initialization
-        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
-
-        // Cast proxy to vault interface
-        vault = ISignedDepositVault(payable(address(proxy)));
+        // Set the asset and vault from the deployment result
+        asset = result.asset;
+        vault = ISignedDepositVault(payable(address(result.vault)));
     }
 
     // ### Yield Tests ###
@@ -39,15 +32,13 @@ contract SignedDepositVaultV1Test is SignedDepositVaultBaseTest {
         public
     {
         _pk = uint64(bound(_pk, 1, type(uint64).max));
-        vm.assume(
-            _relayer != address(0) && _relayer != address(this)
-        );
+        vm.assume(_relayer != address(0) && _relayer != address(this));
         address _depositor = vm.addr(_pk);
         _assets = bound(_assets, 1 ether, type(uint128).max);
         asset.mint(_depositor, _assets);
         vm.prank(_depositor);
         asset.approve(address(vault), _assets);
-        internal_depositWithSig(_depositor, _assets, 0, block.timestamp + 1 hours, _pk, _relayer);
+        internal_depositWithSig(_depositor, _assets, block.timestamp + 1 hours, _pk, _relayer);
 
         // Bound yield to be between 0.1% and 50% of the deposit to ensure meaningful price increase
         _yieldPercent = bound(_yieldPercent, 1, 500); // 0.1% to 50% (scaled by 1000)
@@ -77,15 +68,13 @@ contract SignedDepositVaultV1Test is SignedDepositVaultBaseTest {
         public
     {
         _pk = uint64(bound(_pk, 1, type(uint64).max));
-        vm.assume(
-            _relayer != address(0) && _relayer != address(this)
-        );
+        vm.assume(_relayer != address(0) && _relayer != address(this));
         address _depositor = vm.addr(_pk);
         _assets = bound(_assets, 1 ether, type(uint128).max);
         asset.mint(_depositor, _assets);
         vm.prank(_depositor);
         asset.approve(address(vault), _assets);
-        internal_depositWithSig(_depositor, _assets, 0, block.timestamp + 1 hours, _pk, _relayer);
+        internal_depositWithSig(_depositor, _assets, block.timestamp + 1 hours, _pk, _relayer);
 
         // Bound slash to be between 0.1% and 50% of the deposit to ensure meaningful price decrease
         _slashPercent = bound(_slashPercent, 1, 500); // 0.1% to 50% (scaled by 1000)

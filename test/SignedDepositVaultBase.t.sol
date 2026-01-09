@@ -84,7 +84,7 @@ abstract contract SignedDepositVaultBaseTest is Test {
         vm.prank(_depositor);
         asset.approve(address(vault), _assets);
 
-        uint256 shares = internal_depositWithSig(_depositor, _assets, 0, block.timestamp + 1 hours, _pk, _relayer);
+        uint256 shares = internal_depositWithSig(_depositor, _assets, block.timestamp + 1 hours, _pk, _relayer);
 
         assertGt(shares, 0);
         assertGt(vault.balanceOf(_depositor), 0);
@@ -99,11 +99,10 @@ abstract contract SignedDepositVaultBaseTest is Test {
         vm.prank(_depositor);
         asset.approve(address(vault), _assets);
 
-        uint256 nonce = 0;
         uint256 deadline = block.timestamp + 1 hours;
 
-        // First deposit should succeed
-        internal_depositWithSig(_depositor, _assets, nonce, deadline, _pk, _relayer);
+        uint256 nonce = vault.nonce(_depositor);
+        internal_depositWithSig(_depositor, _assets, deadline, _pk, _relayer);
 
         // Second deposit with same nonce should fail
         ISignedDepositVault.DepositIntent memory intent = ISignedDepositVault.DepositIntent({
@@ -126,8 +125,8 @@ abstract contract SignedDepositVaultBaseTest is Test {
         vm.prank(_depositor);
         asset.approve(address(vault), _assets);
 
-        uint256 nonce = 0;
         uint256 deadline = block.timestamp + 1 hours;
+        uint256 nonce = vault.nonce(_depositor);
 
         // Warp time past deadline
         vm.warp(deadline + 2 hours);
@@ -154,16 +153,14 @@ abstract contract SignedDepositVaultBaseTest is Test {
         _wrongPk = uint64(bound(_wrongPk, 1, type(uint64).max));
         vm.assume(_wrongPk != _pk);
         address _depositor = vm.addr(_pk);
-        address _wrongDepositor = vm.addr(_wrongPk);
         _assets = bound(_assets, MIN_ASSET_DEPOSIT, type(uint128).max);
         vm.assume(_relayer != address(0) && _relayer != address(this));
         asset.mint(_depositor, _assets);
         vm.prank(_depositor);
         asset.approve(address(vault), _assets);
-        internal_depositWithSig(_depositor, _assets, 0, block.timestamp + 1 hours, _pk, _relayer);
+        internal_depositWithSig(_depositor, _assets, block.timestamp + 1 hours, _pk, _relayer);
 
-        // Use a different nonce (1) since nonce 0 was already used, so we can test invalid signature
-        uint256 nonce = 1;
+        uint256 nonce = vault.nonce(_depositor);
         uint256 deadline = block.timestamp + 1 hours;
 
         // Use wrong signer (_wrongPk instead of _pk)
@@ -189,7 +186,7 @@ abstract contract SignedDepositVaultBaseTest is Test {
         vm.prank(_minter);
         asset.approve(address(vault), 1000 ether);
 
-        uint256 assets = internal_mintWithSig(_minter, _shares, 0, block.timestamp + 1 hours, _pk, _relayer);
+        uint256 assets = internal_mintWithSig(_minter, _shares, block.timestamp + 1 hours, _pk, _relayer);
 
         assertGt(assets, 0);
         assertGt(vault.balanceOf(_minter), 0);
@@ -205,11 +202,10 @@ abstract contract SignedDepositVaultBaseTest is Test {
         vm.prank(_minter);
         asset.approve(address(vault), 1000 ether);
 
-        uint256 nonce = 0;
         uint256 deadline = block.timestamp + 1 hours;
 
-        // First mint should succeed
-        internal_mintWithSig(_minter, _shares, nonce, deadline, _pk, _relayer);
+        uint256 nonce = vault.nonce(_minter);
+        internal_mintWithSig(_minter, _shares, deadline, _pk, _relayer);
 
         // Second mint with same nonce should fail
         ISignedDepositVault.MintIntent memory intent =
@@ -232,8 +228,8 @@ abstract contract SignedDepositVaultBaseTest is Test {
         vm.prank(_minter);
         asset.approve(address(vault), 1000 ether);
 
-        uint256 nonce = 0;
         uint256 deadline = block.timestamp + 1 hours;
+        uint256 nonce = vault.nonce(_minter);
 
         // Warp time past deadline
         vm.warp(deadline + 2 hours);
@@ -249,12 +245,9 @@ abstract contract SignedDepositVaultBaseTest is Test {
         vm.stopPrank();
     }
 
-    function testFuzz_MintWithSig_InvalidSignatureFails(
-        uint64 _pk,
-        uint256 _shares,
-        address _relayer,
-        uint64 _wrongPk
-    ) public {
+    function testFuzz_MintWithSig_InvalidSignatureFails(uint64 _pk, uint256 _shares, address _relayer, uint64 _wrongPk)
+        public
+    {
         _pk = uint64(bound(_pk, 1, type(uint64).max));
         _wrongPk = uint64(bound(_wrongPk, 1, type(uint64).max));
         vm.assume(_wrongPk != _pk);
@@ -265,10 +258,9 @@ abstract contract SignedDepositVaultBaseTest is Test {
         asset.mint(_minter, 1000 ether);
         vm.prank(_minter);
         asset.approve(address(vault), 1000 ether);
-        internal_mintWithSig(_minter, _shares, 0, block.timestamp + 1 hours, _pk, _relayer);
+        internal_mintWithSig(_minter, _shares, block.timestamp + 1 hours, _pk, _relayer);
 
-        // Use a different nonce (1) since nonce 0 was already used, so we can test invalid signature
-        uint256 nonce = 1;
+        uint256 nonce = vault.nonce(_minter);
         uint256 deadline = block.timestamp + 1 hours;
 
         // Use wrong signer (_wrongPk instead of _pk)
@@ -285,16 +277,19 @@ abstract contract SignedDepositVaultBaseTest is Test {
     // ============ Helper Functions ============
 
     /// @notice Internal helper function to execute a deposit with signature
+    /// @dev Automatically fetches the current valid nonce from the vault contract
     function internal_depositWithSig(
         address depositor,
         uint256 assets,
-        uint256 nonce,
         uint256 deadline,
         uint256 signerPk,
         address relayer
     ) internal returns (uint256) {
+        // Fetch the current valid nonce from the vault contract
+        uint256 currentNonce = vault.nonce(depositor);
+
         ISignedDepositVault.DepositIntent memory intent = ISignedDepositVault.DepositIntent({
-            depositor: depositor, assets: assets, nonce: nonce, deadline: deadline
+            depositor: depositor, assets: assets, nonce: currentNonce, deadline: deadline
         });
 
         bytes memory signature = signDeposit(intent, signerPk);
@@ -306,17 +301,17 @@ abstract contract SignedDepositVaultBaseTest is Test {
         return shares;
     }
 
-    function internal_mintWithSig(
-        address minter,
-        uint256 shares,
-        uint256 nonce,
-        uint256 deadline,
-        uint256 signerPk,
-        address relayer
-    ) internal returns (uint256) {
-        ISignedDepositVault.MintIntent memory intent = ISignedDepositVault.MintIntent({
-            minter: minter, shares: shares, nonce: nonce, deadline: deadline
-        });
+    /// @notice Internal helper function to execute a mint with signature
+    /// @dev Automatically fetches the current valid nonce from the vault contract
+    function internal_mintWithSig(address minter, uint256 shares, uint256 deadline, uint256 signerPk, address relayer)
+        internal
+        returns (uint256)
+    {
+        // Fetch the current valid nonce from the vault contract
+        uint256 currentNonce = vault.nonce(minter);
+
+        ISignedDepositVault.MintIntent memory intent =
+            ISignedDepositVault.MintIntent({minter: minter, shares: shares, nonce: currentNonce, deadline: deadline});
 
         bytes memory signature = signMint(intent, signerPk);
 
