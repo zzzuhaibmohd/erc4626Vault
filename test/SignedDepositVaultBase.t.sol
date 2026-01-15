@@ -34,18 +34,45 @@ interface ISignedDepositVault {
         uint256 deadline;
     }
 
+    // Custom functions
     function initialize(string memory name, string memory symbol, ERC20 asset) external;
     function depositWithSig(DepositIntent memory intent, bytes memory signature) external returns (uint256);
     function mintWithSig(MintIntent memory intent, bytes memory signature) external returns (uint256);
     function nonce(address account) external view returns (uint256);
     function DOMAIN_SEPARATOR() external view returns (bytes32);
-    function name() external view returns (string memory);
-    function symbol() external view returns (string memory);
-    function asset() external view returns (address);
-    function balanceOf(address account) external view returns (uint256);
-    function convertToAssets(uint256 shares) external view returns (uint256 assets);
     function accureYield(uint256 assets) external returns (uint256);
     function slashYield(uint256 assets) external returns (uint256);
+
+    // IERC20 functions
+    function totalSupply() external view returns (uint256);
+    function balanceOf(address account) external view returns (uint256);
+    function transfer(address to, uint256 amount) external returns (bool);
+    function allowance(address owner, address spender) external view returns (uint256);
+    function approve(address spender, uint256 amount) external returns (bool);
+    function transferFrom(address from, address to, uint256 amount) external returns (bool);
+
+    // IERC20Metadata functions
+    function name() external view returns (string memory);
+    function symbol() external view returns (string memory);
+    function decimals() external view returns (uint8);
+
+    // IERC4626 functions
+    function asset() external view returns (address assetTokenAddress);
+    function totalAssets() external view returns (uint256 totalManagedAssets);
+    function convertToShares(uint256 assets) external view returns (uint256 shares);
+    function convertToAssets(uint256 shares) external view returns (uint256 assets);
+    function maxDeposit(address receiver) external view returns (uint256 maxAssets);
+    function previewDeposit(uint256 assets) external view returns (uint256 shares);
+    function deposit(uint256 assets, address receiver) external returns (uint256 shares);
+    function maxMint(address receiver) external view returns (uint256 maxShares);
+    function previewMint(uint256 shares) external view returns (uint256 assets);
+    function mint(uint256 shares, address receiver) external returns (uint256 assets);
+    function maxWithdraw(address owner) external view returns (uint256 maxAssets);
+    function previewWithdraw(uint256 assets) external view returns (uint256 shares);
+    function withdraw(uint256 assets, address receiver, address owner) external returns (uint256 shares);
+    function maxRedeem(address owner) external view returns (uint256 maxShares);
+    function previewRedeem(uint256 shares) external view returns (uint256 assets);
+    function redeem(uint256 shares, address receiver, address owner) external returns (uint256 assets);
 
     // Error selectors
     error DeadlineExpired();

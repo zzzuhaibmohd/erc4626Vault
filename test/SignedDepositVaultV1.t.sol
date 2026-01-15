@@ -20,6 +20,33 @@ contract SignedDepositVaultV1Test is SignedDepositVaultBaseTest {
         vault = ISignedDepositVault(payable(address(result.vault)));
     }
 
+    // ### Deposit and Mint Tests ###
+    function testFuzz_DepositDirectly(uint64 _pk, uint256 _assets) public {
+        _pk = uint64(bound(_pk, 1, type(uint64).max));
+        address _depositor = vm.addr(_pk);
+        _assets = bound(_assets, 1 ether, type(uint128).max);
+        asset.mint(_depositor, _assets);
+        vm.startPrank(_depositor);
+        asset.approve(address(vault), _assets);
+        uint256 shares = vault.deposit(_assets, _depositor);
+        vm.stopPrank();
+        assertGt(shares, 0);
+        assertGt(vault.balanceOf(_depositor), 0);
+    }
+
+    function testFuzz_MintDirectly(uint64 _pk, uint256 _shares) public {
+        _pk = uint64(bound(_pk, 1, type(uint64).max));
+        address _minter = vm.addr(_pk);
+        _shares = bound(_shares, 1 wei, 1000 ether);
+        asset.mint(_minter, 1000 ether);
+        vm.startPrank(_minter);
+        asset.approve(address(vault), 1000 ether);
+        uint256 assets = vault.mint(_shares, _minter);
+        vm.stopPrank();
+        assertGt(assets, 0);
+        assertGt(vault.balanceOf(_minter), 0);
+    }
+
     // ### Yield Tests ###
 
     // @notice Test function to accure yield via deposit
