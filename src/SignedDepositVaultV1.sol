@@ -64,6 +64,8 @@ contract SignedDepositVaultV1 is
     // Nonces
     mapping(address => uint256) internal _nonces;
 
+    uint256[49] private __gap;
+
     function nonce(address account) public view returns (uint256) {
         return _nonces[account];
     }
@@ -183,6 +185,4 @@ contract SignedDepositVaultV1 is
 
     // UUPS functions
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
-
-    uint256[49] private __gap;
 }
